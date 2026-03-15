@@ -10,7 +10,7 @@ st.set_page_config(page_title="📝 나만의 단어 시험장", layout="wide")
 if "shuffle_seed" not in st.session_state:
     st.session_state.shuffle_seed = random.randint(0, 10000)
 if "is_graded" not in st.session_state:
-    st.session_state.is_graded = False # 채점 상태 기억하기
+    st.session_state.is_graded = False
 
 def reset_test():
     """다시 하기: 순서를 섞고, 입력한 답과 채점 상태를 모두 초기화합니다."""
@@ -73,6 +73,12 @@ if available_files:
 
     col_list, col_test = st.columns([1, 2])
 
+    # 🔥 현재까지 사용자가 텍스트 칸에 입력한 모든 단어를 수집 (대소문자 무시, 공백 제거)
+    entered_words = set()
+    for key, value in st.session_state.items():
+        if key.startswith("q_") and isinstance(value, str) and value.strip():
+            entered_words.add(value.strip().lower())
+
     # --- 왼쪽: 단어 목록 ---
     with col_list:
         st.subheader("📖 단어 목록")
@@ -80,16 +86,26 @@ if available_files:
             words = df[word_col].astype(str).tolist()
             c1, c2, c3 = st.columns(3)
             for i, word in enumerate(words):
-                if i % 3 == 0:
-                    c1.write(word)
-                elif i % 3 == 1:
-                    c2.write(word)
+                clean_word = word.strip()
+                
+                # 🔥 입력된 단어 목록에 현재 단어가 있으면 취소선 처리 적용
+                if clean_word.lower() in entered_words:
+                    # 취소선(~~)과 함께 글자색을 연한 회색으로 바꾸어 확연히 구분되게 합니다.
+                    display_text = f"<span style='color:lightgray;'><strike>{clean_word}</strike></span>"
                 else:
-                    c3.write(word)
+                    display_text = clean_word
+                
+                # HTML 태그를 인식시키기 위해 markdown에 unsafe_allow_html=True 사용
+                if i % 3 == 0:
+                    c1.markdown(display_text, unsafe_allow_html=True)
+                elif i % 3 == 1:
+                    c2.markdown(display_text, unsafe_allow_html=True)
+                else:
+                    c3.markdown(display_text, unsafe_allow_html=True)
 
     # --- 오른쪽: 단어 시험 영역 ---
     with col_test:
-        # 상단 제목 및 버튼 2개 (채점, 다시하기)
+        # 상단 제목 및 버튼 2개
         header_col1, header_col2, header_col3 = st.columns([2, 1, 1])
         with header_col1:
             st.subheader("🎯 단어 시험")
@@ -114,7 +130,7 @@ if available_files:
                 user_input = st.text_input(f"Q{idx}. {meaning}", key=f"q_{original_index}")
                 user_answers[original_index] = {"input": user_input.strip(), "correct": correct_word, "meaning": meaning}
                 
-                # 🔥 채점 버튼이 눌렸다면 칸 바로 밑에 정답/오답 표시하기
+                # 채점 버튼이 눌렸다면 정답/오답 표시
                 if st.session_state.is_graded:
                     if user_input.strip().lower() == correct_word.lower():
                         st.markdown("✅ <span style='color:green; font-weight:bold;'>정답!</span>", unsafe_allow_html=True)
