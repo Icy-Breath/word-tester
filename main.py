@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 import random
 import os
+import re
 
 # 페이지 기본 설정
 st.set_page_config(page_title="📝 나만의 단어 시험장", layout="wide")
@@ -13,12 +14,13 @@ if "is_graded" not in st.session_state:
     st.session_state.is_graded = False
 
 def reset_test():
-    """다시 하기: 순서를 섞고, 입력한 답과 채점 상태를 모두 초기화합니다."""
-    st.session_state.shuffle_seed = random.randint(0, 10000)
+    """다시 하기: 입력한 답과 채점 상태를 모두 초기화합니다."""
     st.session_state.is_graded = False
-    for key in list(st.session_state.keys()):
-        if key.startswith("q_"):
-            del st.session_state[key]
+    st.session_state.shuffle_seed = random.randint(0, 10000)
+
+def clear_answers():
+    """입력값 초기화: 문서/시트 선택이 변경될 때 호출합니다."""
+    st.session_state.is_graded = False
 
 def grade_test():
     """채점 하기: 상태를 '채점됨(True)'으로 바꿉니다."""
@@ -46,17 +48,19 @@ with st.expander("새로운 단어장 파일 추가하기 (선택)"):
             available_files[f"[업로드] {f.name}"] = f
 
 if available_files:
-    selected_file_name = st.selectbox("📚 시험 볼 문서를 선택하세요:", list(available_files.keys()))
+    selected_file_name = st.selectbox("📚 시험 볼 문서를 선택하세요:", list(available_files.keys()), on_change=clear_answers)
     file_to_load = available_files[selected_file_name]
     
     df = None
+    selected_sheet = None
     if selected_file_name.endswith('.xlsx'):
         xls = pd.ExcelFile(file_to_load)
         sheet_names = xls.sheet_names
-        selected_sheet = st.selectbox("📑 시트를 선택하세요:", sheet_names)
+        selected_sheet = st.selectbox("📑 시트를 선택하세요:", sheet_names, on_change=clear_answers)
         df = pd.read_excel(file_to_load, sheet_name=selected_sheet)
     else:
         df = pd.read_csv(file_to_load)
+        selected_sheet = "csv"
         
     st.divider()
     
@@ -73,10 +77,17 @@ if available_files:
 
     col_list, col_test = st.columns([1, 2])
 
-    # 🔥 현재까지 사용자가 텍스트 칸에 입력한 모든 단어를 수집 (대소문자 무시, 공백 제거)
+    # 파일/시트 정보를 포함한 고유한 키 프리픽스 생성 (위에서도 동일한 생성)
+    safe_file = re.sub(r'[^a-zA-Z0-9]', '_', selected_file_name)[:15]
+    safe_sheet = re.sub(r'[^a-zA-Z0-9]', '_', str(selected_sheet))[:15]
+    key_prefix = f"{safe_file}_{safe_sheet}"
+
+    # 🔥 현재 파일/시트의 사용자가 텍스트 칸에 입력한 모든 단어를 수집 (대소문자 무시, 공백 제거)
+    # shuffle_seed를 포함한 현재 라운드의 키만 수집
     entered_words = set()
+    current_key_pattern = f"q_{key_prefix}_{st.session_state.shuffle_seed}_"
     for key, value in st.session_state.items():
-        if key.startswith("q_") and isinstance(value, str) and value.strip():
+        if key.startswith(current_key_pattern) and isinstance(value, str) and value.strip():
             entered_words.add(value.strip().lower())
 
     # --- 왼쪽: 단어 목록 ---
@@ -119,6 +130,11 @@ if available_files:
         
         st.write(f"뜻을 보고 알맞은 단어를 빈칸에 적어보세요. (총 **{total_q}문제**)")
         
+        # 파일/시트 정보를 포함한 고유한 키 프리픽스 생성 (각 파일/시트마다 다른 키)
+        safe_file = re.sub(r'[^a-zA-Z0-9]', '_', selected_file_name)[:15]
+        safe_sheet = re.sub(r'[^a-zA-Z0-9]', '_', str(selected_sheet))[:15]
+        key_prefix = f"{safe_file}_{safe_sheet}"
+        
         user_answers = {}
         
         with st.container(height=550):
@@ -126,8 +142,13 @@ if available_files:
                 meaning = str(row[meaning_col])
                 correct_word = str(row[word_col]).strip()
                 
-                # 입력 칸
-                user_input = st.text_input(f"Q{idx}. {meaning}", key=f"q_{original_index}")
+                # 입력 칸 - shuffle_seed를 포함한 고유한 키 사용
+                # (shuffle_seed가 바뀔 때마다 완전히 다른 키가 생성됨 = 새로운 입력칸)
+                current_key = f"q_{key_prefix}_{st.session_state.shuffle_seed}_{original_index}"
+                user_input = st.text_input(
+                    f"Q{idx}. {meaning}",
+                    key=current_key
+                )
                 user_answers[original_index] = {"input": user_input.strip(), "correct": correct_word, "meaning": meaning}
                 
                 # 채점 버튼이 눌렸다면 정답/오답 표시
