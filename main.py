@@ -4,8 +4,29 @@ import random
 import os
 import re
 from datetime import datetime
+import subprocess
 
-# 페이지 기본 설정
+def get_git_commit_time(file_path, data_dir):
+    """파일의 마지막 git commit 시간을 반환 (Unix timestamp)"""
+    try:
+        result = subprocess.run(
+            ['git', 'log', '-1', '--format=%aI', file_path],
+            cwd=data_dir,
+            capture_output=True,
+            text=True,
+            timeout=5
+        )
+        if result.returncode == 0 and result.stdout.strip():
+            # ISO 8601 형식의 시간을 파싱
+            commit_time_str = result.stdout.strip()
+            commit_datetime = datetime.fromisoformat(commit_time_str.replace('Z', '+00:00'))
+            return commit_datetime.timestamp()
+    except (subprocess.TimeoutExpired, Exception):
+        pass
+    # git 정보가 없으면 파일 시스템 시간 사용
+    return os.path.getmtime(file_path)
+
+# --- 페이지 기본 설정 ---
 st.set_page_config(page_title="📝 나만의 단어 시험장", layout="wide")
 
 # --- 상태 관리 ---
@@ -41,7 +62,8 @@ if os.path.exists(data_dir) and os.path.isdir(data_dir):
             continue
         if file_name.endswith('.xlsx') or file_name.endswith('.csv'):
             file_path = os.path.join(data_dir, file_name)
-            mtime = os.path.getmtime(file_path)
+            # git commit 시간 또는 파일 시스템 시간 사용
+            mtime = get_git_commit_time(file_path, data_dir)
             # 수정 시간을 표시 (테스트용)
             mtime_str = datetime.fromtimestamp(mtime).strftime('%Y-%m-%d %H:%M:%S')
             display_name = f"[기본] {file_name} ({mtime_str})"
@@ -63,8 +85,10 @@ with st.expander("새로운 단어장 파일 추가하기 (선택)"):
         # 새로운 파일을 추가한 경우, 업로드된 파일들을 먼저 표시
         # 나중에 추가한 것부터 앞에 오도록 역순 처리
         new_available_files = {}
+        upload_time = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
         for f in reversed(uploaded_files):
-            new_available_files[f"[업로드] {f.name}"] = f
+            display_name = f"[업로드] {f.name} ({upload_time})"
+            new_available_files[display_name] = f
         # 그 다음 기본 파일들(data/) 추가
         new_available_files.update(available_files)
         available_files = new_available_files
