@@ -3,6 +3,7 @@ import pandas as pd
 import random
 import os
 import re
+from datetime import datetime
 
 # 페이지 기본 설정
 st.set_page_config(page_title="📝 나만의 단어 시험장", layout="wide")
@@ -35,10 +36,15 @@ base_files_with_mtime = []  # (display_name, file_path, mtime) 튜플 저장
 
 if os.path.exists(data_dir) and os.path.isdir(data_dir):
     for file_name in os.listdir(data_dir):
+        # Excel 임시 파일 제외 (~$로 시작하는 파일)
+        if file_name.startswith('~$'):
+            continue
         if file_name.endswith('.xlsx') or file_name.endswith('.csv'):
             file_path = os.path.join(data_dir, file_name)
             mtime = os.path.getmtime(file_path)
-            display_name = f"[기본] {file_name}"
+            # 수정 시간을 표시 (테스트용)
+            mtime_str = datetime.fromtimestamp(mtime).strftime('%Y-%m-%d %H:%M:%S')
+            display_name = f"[기본] {file_name} ({mtime_str})"
             base_files_with_mtime.append((display_name, file_path, mtime, file_name))
     
     # 수정 날짜 기준 최신순으로 정렬 (내림차순), 같으면 파일 이름으로 정렬 (앞->뒤)
@@ -70,13 +76,25 @@ if available_files:
     
     df = None
     selected_sheet = None
-    if selected_file_name.endswith('.xlsx'):
+    # display_name이 아닌 file_to_load(파일 경로)로 확장자 판단
+    if str(file_to_load).endswith('.xlsx'):
         xls = pd.ExcelFile(file_to_load)
         sheet_names = xls.sheet_names
         selected_sheet = st.selectbox("📑 시트를 선택하세요:", sheet_names, on_change=clear_answers)
         df = pd.read_excel(file_to_load, sheet_name=selected_sheet)
     else:
-        df = pd.read_csv(file_to_load)
+        # CSV 파일 인코딩 자동 감지 및 읽기
+        encodings_to_try = ['utf-8', 'cp949', 'euc-kr', 'latin1', 'iso-8859-1']
+        df = None
+        for encoding in encodings_to_try:
+            try:
+                df = pd.read_csv(file_to_load, encoding=encoding)
+                break
+            except UnicodeDecodeError:
+                continue
+        if df is None:
+            st.error("CSV 파일을 읽을 수 없습니다. 지원되지 않는 인코딩입니다.")
+            st.stop()
         selected_sheet = "csv"
         
     st.divider()
