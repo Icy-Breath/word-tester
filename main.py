@@ -39,13 +39,13 @@ if os.path.exists(data_dir) and os.path.isdir(data_dir):
             file_path = os.path.join(data_dir, file_name)
             mtime = os.path.getmtime(file_path)
             display_name = f"[기본] {file_name}"
-            base_files_with_mtime.append((display_name, file_path, mtime))
+            base_files_with_mtime.append((display_name, file_path, mtime, file_name))
     
-    # 수정 날짜 기준 최신순으로 정렬 (내림차순)
-    base_files_with_mtime.sort(key=lambda x: x[2], reverse=True)
+    # 수정 날짜 기준 최신순으로 정렬 (내림차순), 같으면 파일 이름으로 정렬 (앞->뒤)
+    base_files_with_mtime.sort(key=lambda x: (-x[2], x[3]))
     
     # 정렬된 순서대로 available_files에 추가
-    for display_name, file_path, _ in base_files_with_mtime:
+    for display_name, file_path, _, _ in base_files_with_mtime:
         available_files[display_name] = file_path
 
 # --- 메인 화면 ---
