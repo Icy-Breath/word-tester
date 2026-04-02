@@ -31,12 +31,22 @@ current_dir = os.path.dirname(os.path.abspath(__file__))
 data_dir = os.path.join(current_dir, "data")
 
 available_files = {}
+base_files_with_mtime = []  # (display_name, file_path, mtime) 튜플 저장
 
 if os.path.exists(data_dir) and os.path.isdir(data_dir):
     for file_name in os.listdir(data_dir):
         if file_name.endswith('.xlsx') or file_name.endswith('.csv'):
             file_path = os.path.join(data_dir, file_name)
-            available_files[f"[기본] {file_name}"] = file_path
+            mtime = os.path.getmtime(file_path)
+            display_name = f"[기본] {file_name}"
+            base_files_with_mtime.append((display_name, file_path, mtime))
+    
+    # 수정 날짜 기준 최신순으로 정렬 (내림차순)
+    base_files_with_mtime.sort(key=lambda x: x[2], reverse=True)
+    
+    # 정렬된 순서대로 available_files에 추가
+    for display_name, file_path, _ in base_files_with_mtime:
+        available_files[display_name] = file_path
 
 # --- 메인 화면 ---
 st.title("📝 나만의 단어 시험장")
@@ -44,11 +54,18 @@ st.title("📝 나만의 단어 시험장")
 with st.expander("새로운 단어장 파일 추가하기 (선택)"):
     uploaded_files = st.file_uploader("단어장 파일(Excel, CSV)을 끌어다 놓으세요", type=['xlsx', 'csv'], accept_multiple_files=True)
     if uploaded_files:
-        for f in uploaded_files:
-            available_files[f"[업로드] {f.name}"] = f
+        # 새로운 파일을 추가한 경우, 업로드된 파일들을 먼저 표시
+        # 나중에 추가한 것부터 앞에 오도록 역순 처리
+        new_available_files = {}
+        for f in reversed(uploaded_files):
+            new_available_files[f"[업로드] {f.name}"] = f
+        # 그 다음 기본 파일들(data/) 추가
+        new_available_files.update(available_files)
+        available_files = new_available_files
 
 if available_files:
-    selected_file_name = st.selectbox("📚 시험 볼 문서를 선택하세요:", list(available_files.keys()), on_change=clear_answers)
+    available_files_list = list(available_files.keys())
+    selected_file_name = st.selectbox("📚 시험 볼 문서를 선택하세요:", available_files_list, index=0, on_change=clear_answers)
     file_to_load = available_files[selected_file_name]
     
     df = None
@@ -95,24 +112,42 @@ if available_files:
         st.subheader("📖 단어 목록")
         with st.container(height=700):
             words = df[word_col].astype(str).tolist()
-            c1, c2, c3 = st.columns(3)
-            for i, word in enumerate(words):
-                clean_word = word.strip()
+            num_words = len(words)
+            
+            # 행 단위로 3개씩 표시하여 높이 정렬
+            for row_idx in range(0, num_words, 3):
+                c1, c2, c3 = st.columns(3)
                 
-                # 🔥 입력된 단어 목록에 현재 단어가 있으면 취소선 처리 적용
-                if clean_word.lower() in entered_words:
-                    # 취소선(~~)과 함께 글자색을 연한 회색으로 바꾸어 확연히 구분되게 합니다.
-                    display_text = f"<span style='color:lightgray;'><strike>{clean_word}</strike></span>"
-                else:
-                    display_text = clean_word
-                
-                # HTML 태그를 인식시키기 위해 markdown에 unsafe_allow_html=True 사용
-                if i % 3 == 0:
+                # 첫 번째 열
+                if row_idx < num_words:
+                    clean_word = words[row_idx].strip()
+                    if clean_word.lower() in entered_words:
+                        display_text = f"<span style='color:lightgray;'><strike>{clean_word}</strike></span>"
+                    else:
+                        display_text = clean_word
                     c1.markdown(display_text, unsafe_allow_html=True)
-                elif i % 3 == 1:
+                
+                # 두 번째 열
+                if row_idx + 1 < num_words:
+                    clean_word = words[row_idx + 1].strip()
+                    if clean_word.lower() in entered_words:
+                        display_text = f"<span style='color:lightgray;'><strike>{clean_word}</strike></span>"
+                    else:
+                        display_text = clean_word
                     c2.markdown(display_text, unsafe_allow_html=True)
-                else:
+                
+                # 세 번째 열
+                if row_idx + 2 < num_words:
+                    clean_word = words[row_idx + 2].strip()
+                    if clean_word.lower() in entered_words:
+                        display_text = f"<span style='color:lightgray;'><strike>{clean_word}</strike></span>"
+                    else:
+                        display_text = clean_word
                     c3.markdown(display_text, unsafe_allow_html=True)
+                
+                # 마지막 행이 아니면 구분선 표시
+                if row_idx + 3 < num_words:
+                    st.markdown('<hr style="margin: 2px 0; border: 1px solid #333;">', unsafe_allow_html=True)
 
     # --- 오른쪽: 단어 시험 영역 ---
     with col_test:
